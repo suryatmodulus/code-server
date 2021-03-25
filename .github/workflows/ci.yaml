@@ -8,20 +8,26 @@ on:
     branches:
       - main
 
+# Note: if: success() is used in several jobs -
+# this ensures that it only executes if all previous jobs succeeded.
+
+# if: steps.cache-yarn.outputs.cache-hit != 'true'
+# will skip running `yarn install` if it successfully fetched from cache
+
 jobs:
-  lint:
-    name: Format & Lint checks
+  prebuild:
+    name: Pre-build checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
 
-      - name: Install Node.js v12
+      - name: Install node.js v12
         uses: actions/setup-node@v2
         with:
           node-version: "12"
 
-      - name: Install Helm
+      - name: Install helm
         uses: azure/setup-helm@v1
 
       - name: Fetch dependencies from cache
@@ -43,15 +49,56 @@ jobs:
         run: yarn lint
         if: success()
 
-  test-unit:
+      - name: Run code-server unit tests
+        run: yarn test:unit
+        if: success()
+
+  build:
+    name: Build
+    needs: prebuild
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - name: Run unit tests
-        uses: ./ci/images/debian10
-        with:
-          args: ./ci/steps/test-unit.sh
+      - uses: actions/checkout@v2
 
+      - name: Install node.js v12
+        uses: actions/setup-node@v2
+        with:
+          node-version: "12"
+
+      - name: Fetch dependencies from cache
+        id: cache-yarn
+        uses: actions/cache@v2
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-amd64-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-yarn.outputs.cache-hit != 'true'
+        run: yarn --frozen-lockfile
+
+      - name: Build code-server
+        run: yarn build
+
+      - name: Build vscode
+        run: yarn build:vscode
+        if: success()
+
+      - name: Create release package
+        run: yarn release
+        if: success()
+
+      # https://github.com/actions/upload-artifact/issues/38
+      - name: Compress release package
+        run: tar -czf package.tar.gz release
+
+      - name: Upload npm package artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: npm-package
+          path: ./package.tar.gz
+
+# TODO: reorganize these jobs
+jobs-unported:
   test-e2e:
     needs: linux-amd64
     runs-on: ubuntu-latest
@@ -82,20 +129,6 @@ jobs:
           path: ./test/e2e/videos
       - name: Remove release packages and test artifacts
         run: rm -rf ./release-packages ./test/e2e/videos
-
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run ./ci/steps/release.sh
-        uses: ./ci/images/debian10
-        with:
-          args: ./ci/steps/release.sh
-      - name: Upload npm package artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: npm-package
-          path: ./release-npm-package
 
   linux-amd64:
     needs: release
