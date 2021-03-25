@@ -9,7 +9,8 @@ on:
       - main
 
 jobs:
-  fmt:
+  lint:
+    name: Format & Lint checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -19,6 +20,9 @@ jobs:
         uses: actions/setup-node@v2
         with:
           node-version: "12"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v1
 
       - name: Install ShellCheck
         run: |
@@ -41,15 +45,11 @@ jobs:
 
       - name: Run yarn fmt
         run: yarn fmt
+        if: success()
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run ./ci/steps/lint.sh
-        uses: ./ci/images/debian10
-        with:
-          args: ./ci/steps/lint.sh
+      - name: Run yarn lint
+        run: yarn lint
+        if: success()
 
   test-unit:
     runs-on: ubuntu-latest
