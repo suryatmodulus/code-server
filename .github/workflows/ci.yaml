@@ -59,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - name: Install node.js v12
         uses: actions/setup-node@v2
@@ -83,9 +85,7 @@ jobs:
       # use this to avoid rebuilding it if nothing changed
       - name: Get latest lib/vscode rev
         id: vscode-rev
-        run: |
-          ./ci/steps/git-deepen.sh
-          echo "::set-output name=rev::$(git log -1 --format='%H' ./lib/vscode)"
+        run: echo "::set-output name=rev::$(git log -1 --format='%H' ./lib/vscode)"
 
       - name: Attempt to fetch vscode build from cache
         id: cache-vscode
