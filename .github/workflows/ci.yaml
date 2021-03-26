@@ -123,7 +123,6 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: npm-package
-          path: ./package.tar.gz
 
       - name: Decompress npm package
         run: tar -xzf package.tar.gz
