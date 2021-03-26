@@ -83,6 +83,8 @@ jobs:
         run: yarn build:vscode
         if: success()
 
+      # The release package does not contain any native modules
+      # and is neutral to architecture/os/libc version.
       - name: Create release package
         run: yarn release
         if: success()
@@ -97,8 +99,47 @@ jobs:
           name: npm-package
           path: ./package.tar.gz
 
-# TODO: reorganize these jobs
-jobs-unported:
+  linux-amd64:
+    name: Linux x86-64 build
+    needs: build
+
+    # We use Ubuntu 16.04 here, so that our build is more compatible
+    # with older libc versions. We used to (Q1'20) use CentOS 7 here,
+    # but it has a full update EOL of Q4'20 and a 'critical security'
+    # update EOL of 2024. We're dropping our full support 3 quarters
+    # early, but this gets us CI speed benefits on GH.
+
+    # TODO: cache building here
+    runs-on: ubuntu-16.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install node.js v12
+        uses: actions/setup-node@v2
+        with:
+          node-version: "12"
+
+      - name: Download npm package
+        uses: actions/download-artifact@v2
+        with:
+          name: npm-package
+          path: ./package.tar.gz
+
+      - name: Decompress npm package
+        run: tar -xzf package.tar.gz
+
+      - name: Build and test yarn package
+        run: |
+          yarn release:standalone
+          yarn test:standalone-release
+          yarn package
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: release-packages
+          path: ./release-packages
+
   test-e2e:
     needs: linux-amd64
     runs-on: ubuntu-latest
@@ -107,130 +148,31 @@ jobs-unported:
       CODE_SERVER_ADDRESS: http://localhost:8080
     steps:
       - uses: actions/checkout@v2
+
       - name: Download release packages
         uses: actions/download-artifact@v2
         with:
           name: release-packages
           path: ./release-packages
+
       - name: Untar code-server file
         run: |
           cd release-packages && tar -xzf code-server*-linux-amd64.tar.gz
+
       - uses: microsoft/playwright-github-action@v1
+
       - name: Install dependencies and run end-to-end tests
         run: |
           ./release-packages/code-server*-linux-amd64/bin/code-server &
           yarn --frozen-lockfile
           yarn test:e2e
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v2
         with:
           name: test-videos
           path: ./test/e2e/videos
+
       - name: Remove release packages and test artifacts
         run: rm -rf ./release-packages ./test/e2e/videos
-
-  linux-amd64:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download npm package
-        uses: actions/download-artifact@v2
-        with:
-          name: npm-package
-          path: ./release-npm-package
-      - name: Run ./ci/steps/release-packages.sh
-        uses: ./ci/images/centos7
-        with:
-          args: ./ci/steps/release-packages.sh
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: release-packages
-          path: ./release-packages
-
-  linux-arm64:
-    needs: release
-    runs-on: ubuntu-arm64-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download npm package
-        uses: actions/download-artifact@v2
-        with:
-          name: npm-package
-          path: ./release-npm-package
-      - name: Run ./ci/steps/release-packages.sh
-        uses: ./ci/images/centos7
-        with:
-          args: ./ci/steps/release-packages.sh
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: release-packages
-          path: ./release-packages
-      - name: Remove docker images
-        run: docker system prune -af
-
-  macos-amd64:
-    needs: release
-    runs-on: macos-latest
-    # This job requires secrets, so can only run on the default branch
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download npm package
-        uses: actions/download-artifact@v2
-        with:
-          name: npm-package
-          path: ./release-npm-package
-      - run: ./ci/steps/release-packages.sh
-        env:
-          # Otherwise we get rate limited when fetching the ripgrep binary.
-          # For whatever reason only MacOS needs it.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: release-packages
-          path: ./release-packages
-
-  docker-amd64:
-    runs-on: ubuntu-latest
-    needs: linux-amd64
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download release package
-        uses: actions/download-artifact@v2
-        with:
-          name: release-packages
-          path: ./release-packages
-      - name: Run ./ci/steps/build-docker-image.sh
-        uses: ./ci/images/debian10
-        with:
-          args: ./ci/steps/build-docker-image.sh
-      - name: Upload release image
-        uses: actions/upload-artifact@v2
-        with:
-          name: release-images
-          path: ./release-images
-
-  docker-arm64:
-    runs-on: ubuntu-arm64-latest
-    needs: linux-arm64
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download release package
-        uses: actions/download-artifact@v2
-        with:
-          name: release-packages
-          path: ./release-packages
-      - name: Run ./ci/steps/build-docker-image.sh
-        uses: ./ci/images/centos7
-        with:
-          args: ./ci/steps/build-docker-image.sh
-      - name: Upload release image
-        uses: actions/upload-artifact@v2
-        with:
-          name: release-images
-          path: ./release-images
