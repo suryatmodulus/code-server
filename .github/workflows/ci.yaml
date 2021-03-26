@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: "**/node_modules"
-          key: ${{ runner.os }}-amd64-${{ hashFiles('**/yarn.lock') }}
+          key: yarn-build-${{ hashFiles('**/yarn.lock') }}
 
       - name: Install dependencies
         if: steps.cache-yarn.outputs.cache-hit != 'true'
@@ -70,7 +70,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: "**/node_modules"
-          key: ${{ runner.os }}-amd64-${{ hashFiles('**/yarn.lock') }}
+          key: yarn-build-${{ hashFiles('**/yarn.lock') }}
 
       - name: Install dependencies
         if: steps.cache-yarn.outputs.cache-hit != 'true'
@@ -79,9 +79,26 @@ jobs:
       - name: Build code-server
         run: yarn build
 
+      # Parse the hash of the latest commit inside lib/vscode
+      # use this to avoid rebuilding it if nothing changed
+      - name: Get latest lib/vscode rev
+        id: vscode-rev
+        run: echo "::set-output name=rev::$(git log -1 --format='%H' lib/vscode)"
+
+      - name: Attempt to fetch vscode build from cache
+        id: cache-vscode
+        uses: actions/cache@v2
+        with:
+          path: |
+            lib/vscode/.build
+            lib/vscode/out-build
+            lib/vscode/out-vscode
+            lib/vscode/out-vscode-min
+          key: vscode-build-${{ steps.vscode-rev.outputs.rev }}
+
       - name: Build vscode
+        if: steps.cache-vscode.outputs.cache-hit != 'true'
         run: yarn build:vscode
-        if: success()
 
       # The release package does not contain any native modules
       # and is neutral to architecture/os/libc version.
@@ -109,7 +126,8 @@ jobs:
     # update EOL of 2024. We're dropping our full support 3 quarters
     # early, but this gets us CI speed benefits on GH.
 
-    # TODO: cache building here
+    # TODO: cache building yarn --production
+    # this requires refactoring our release scripts
     runs-on: ubuntu-16.04
     steps:
       - uses: actions/checkout@v2
@@ -122,7 +140,7 @@ jobs:
       - name: Install nfpm
         run: |
           curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh -s -- -b ~/.local/bin
-          export PATH=$HOME/.local/bin:$PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Download npm package
         uses: actions/download-artifact@v2
