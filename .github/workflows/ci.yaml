@@ -118,19 +118,26 @@ jobs:
           name: npm-package
           path: ./package.tar.gz
 
-  linux-amd64:
+  # We use Ubuntu 16.04 here, so that our build is more compatible
+  # with older libc versions. We used to (Q1'20) use CentOS 7 here,
+  # but it has a full update EOL of Q4'20 and a 'critical security'
+  # update EOL of 2024. We're dropping our full support 3 quarters
+  # early, but this gets us CI speed benefits on GH.
+
+  # TODO: cache building yarn --production
+  # possibly 2m30s of savings(?)
+  # this requires refactoring our release scripts
+
+  # TODO: cross-compile on arm64
+  package:
     name: Linux x86-64 build
     needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-16.04, macos-latest]
+      fail-fast: false
 
-    # We use Ubuntu 16.04 here, so that our build is more compatible
-    # with older libc versions. We used to (Q1'20) use CentOS 7 here,
-    # but it has a full update EOL of Q4'20 and a 'critical security'
-    # update EOL of 2024. We're dropping our full support 3 quarters
-    # early, but this gets us CI speed benefits on GH.
-
-    # TODO: cache building yarn --production
-    # this requires refactoring our release scripts
-    runs-on: ubuntu-16.04
     steps:
       - uses: actions/checkout@v2
 
@@ -152,11 +159,14 @@ jobs:
       - name: Decompress npm package
         run: tar -xzf package.tar.gz
 
-      - name: Build and test yarn package
-        run: |
-          yarn release:standalone
-          yarn test:standalone-release
-          yarn package
+      - name: Build standalone release
+        run: yarn release:standalone
+
+      - name: Sanity test standalone release
+        run: yarn test:standalone-release
+
+      - name: Build packages with nfpm
+        run: yarn package
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v2
@@ -166,7 +176,7 @@ jobs:
 
   test-e2e:
     name: End-to-end tests
-    needs: linux-amd64
+    needs: package
     runs-on: ubuntu-latest
     env:
       PASSWORD: e45432jklfdsab
@@ -217,3 +227,24 @@ jobs:
 
       - name: Remove release packages and test artifacts
         run: rm -rf ./release-packages ./test/e2e/videos
+
+  docker-amd64:
+    runs-on: ubuntu-latest
+    needs: package
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Download release package
+        uses: actions/download-artifact@v2
+        with:
+          name: release-packages
+          path: ./release-packages
+
+      - name: Run ./ci/steps/build-docker-image.sh
+        run: ./ci/steps/build-docker-image.sh
+
+      - name: Upload release image
+        uses: actions/upload-artifact@v2
+        with:
+          name: release-images
+          path: ./release-images
