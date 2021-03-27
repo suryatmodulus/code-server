@@ -213,6 +213,14 @@ jobs:
         if: steps.cache-yarn.outputs.cache-hit != 'true'
         run: yarn --frozen-lockfile
 
+      # HACK: this shouldn't need to exist, but put it here anyway
+      # in an attempt to solve Playwright cache failures.
+      - name: Reinstall playwright
+        run: |
+          cd test/
+          rm -r node_modules/playwright
+          yarn install --check-files
+
       - name: Run end-to-end tests
         run: |
           ./release-packages/code-server*-linux-amd64/bin/code-server &
