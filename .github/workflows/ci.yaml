@@ -245,6 +245,13 @@ jobs:
       - name: Install playwright
         uses: microsoft/playwright-github-action@v1
 
+      - name: Fetch dependencies from cache
+        id: cache-yarn
+        uses: actions/cache@v2
+        with:
+          path: "**/node_modules"
+          key: yarn-build-${{ hashFiles('**/yarn.lock') }}
+
       - name: Download release packages
         uses: actions/download-artifact@v2
         with:
@@ -255,13 +262,6 @@ jobs:
         run: |
           cd release-packages && tar -xzf code-server*-linux-amd64.tar.gz
 
-      - name: Fetch dependencies from cache
-        id: cache-yarn
-        uses: actions/cache@v2
-        with:
-          path: "**/node_modules"
-          key: yarn-build-${{ hashFiles('**/yarn.lock') }}
-
       - name: Install dependencies
         if: steps.cache-yarn.outputs.cache-hit != 'true'
         run: yarn --frozen-lockfile
@@ -269,6 +269,7 @@ jobs:
       # HACK: this shouldn't need to exist, but put it here anyway
       # in an attempt to solve Playwright cache failures.
       - name: Reinstall playwright
+        if: steps.cache-yarn.outputs.cache-hit == 'true'
         run: |
           cd test/
           rm -r node_modules/playwright
