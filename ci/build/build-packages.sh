@@ -13,6 +13,10 @@ main() {
   release_archive
 
   if [[ $OS == "linux" ]]; then
+    # Allow us to override architecture on Linux
+    if [ "$1" ]; then
+      ARCH=$1
+    fi
     release_nfpm
   fi
 }

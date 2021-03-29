@@ -130,7 +130,7 @@ jobs:
 
   # TODO: cross-compile on arm64
   package:
-    name: Linux x86-64 build
+    name: x86-64 builds
     needs: build
     runs-on: ${{ matrix.os }}
     strategy:
@@ -167,6 +167,59 @@ jobs:
 
       - name: Build packages with nfpm
         run: yarn package
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: release-packages
+          path: ./release-packages
+
+  package-arm64:
+    name: Linux ARM64 cross-compile build
+    needs: build
+    runs-on: ubuntu-16.04
+    env:
+      AR: aarch64-linux-gnu-ar
+      CC: aarch64-linux-gnu-gcc
+      CXX: aarch64-linux-gnu-g++
+      LINK: aarch64-linux-gnu-g++
+      NPM_CONFIG_ARCH: arm64
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install node.js v12
+        uses: actions/setup-node@v2
+        with:
+          node-version: "12"
+
+      - name: Install nfpm
+        run: |
+          curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh -s -- -b ~/.local/bin v2.3.1
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install cross-compiler
+        run: sudo apt install g++-aarch64-linux-gnu
+
+      - name: Download npm package
+        uses: actions/download-artifact@v2
+        with:
+          name: npm-package
+
+      - name: Decompress npm package
+        run: tar -xzf package.tar.gz
+
+      - name: Build standalone release
+        run: yarn release:standalone
+
+      - name: Replace node with arm64 equivalent
+        run: |
+          wget https://nodejs.org/dist/v12.18.4/node-v12.18.4-linux-arm64.tar.gz
+          tar -xzf node-v12.18.4-linux-arm64.tar.gz node-v12.18.4-linux-arm64/bin/node --strip-components=2
+          mv ./node ./release-standalone/lib/node
+
+      - name: Build packages with nfpm
+        run: yarn package arm64
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v2
