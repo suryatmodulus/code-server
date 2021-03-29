@@ -8,15 +8,16 @@ main() {
   cd "$(dirname "${0}")/../.."
   source ./ci/lib.sh
 
+  # Allow us to override architecture on Linux
+  if [ "$#" -eq 1 ] && [ "$1" ]; then
+    ARCH=$1
+  fi
+
   mkdir -p release-packages
 
   release_archive
 
   if [[ $OS == "linux" ]]; then
-    # Allow us to override architecture on Linux
-    if [ "$1" ]; then
-      ARCH=$1
-    fi
     release_nfpm
   fi
 }
